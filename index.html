@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Astro Jump — Safe Revive + Leaderboard</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;background:#090b12;color:#fff;font-family:Inter,system-ui,Segoe UI,Arial,sans-serif}
+body{display:flex;justify-content:center;padding:12px}
+.phone{width:min(100%,400px);background:#050507;border:1px solid #272b39;border-radius:28px;padding:7px}
+.screen{position:relative;overflow:hidden;border-radius:23px;background:#050714;outline:none;touch-action:none;user-select:none}
+canvas{display:block;width:100%;height:auto;touch-action:none;cursor:pointer}
+.hud{position:absolute;inset:0 0 auto 0;display:flex;justify-content:space-between;align-items:flex-start;padding:12px;color:white;pointer-events:none}
+.controls{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:235px}
+.btn{pointer-events:auto;min-height:40px;border:0;border-radius:999px;background:rgba(0,0,0,.42);color:#fff;padding:0 11px;font-weight:900;font-size:11px}
+.skipbar{position:absolute;left:10px;right:10px;bottom:14px;display:flex;justify-content:center;gap:6px;flex-wrap:wrap;pointer-events:none}
+.skipbar button{pointer-events:auto;min-width:42px;min-height:38px;border:0;border-radius:10px;background:rgba(0,0,0,.48);color:#fff;font-weight:900}
+.overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:22px;background:rgba(0,0,0,.38);color:white;text-align:center}
+.panel{width:min(100%,310px);padding:20px;border:1px solid rgba(255,255,255,.14);border-radius:20px;background:rgba(4,5,10,.93);backdrop-filter:blur(8px)}
+.primary{width:100%;min-height:48px;margin-top:12px;border:0;border-radius:14px;background:#fff;color:#08090d;font-weight:950}
+.secondary{width:100%;min-height:44px;margin-top:9px;border:1px solid rgba(255,255,255,.18);border-radius:14px;background:rgba(255,255,255,.06);color:#fff;font-weight:900}
+.hidden{display:none!important}
+.choiceLabel,.movingLabel{position:absolute;left:50%;transform:translateX(-50%);padding:7px 11px;border-radius:999px;background:rgba(0,0,0,.4);font-size:10px;font-weight:950;letter-spacing:.15em;color:white;pointer-events:none}
+.choiceLabel{top:88px}.movingLabel{top:88px;color:#8ffcff}
+.speedPop{position:absolute;top:132px;left:50%;transform:translateX(-50%);text-align:center;color:#fff;pointer-events:none}
+.speedPop strong{font-size:28px;display:block}
+.perfectPop{position:absolute;left:50%;top:165px;transform:translateX(-50%);text-align:center;pointer-events:none;color:#fff36b;text-shadow:0 2px 8px rgba(0,0,0,.85)}
+.perfectPop strong{font-size:30px;display:block}
+.flowPop{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;color:#8ffcff;text-align:center;text-shadow:0 3px 12px rgba(0,0,0,.9)}
+.flowPop strong{font-size:58px;display:block;letter-spacing:.08em}
+.flowMeter{position:absolute;left:50%;top:58px;transform:translateX(-50%);width:150px;height:7px;background:rgba(0,0,0,.35);border-radius:999px;overflow:hidden;pointer-events:none}
+.flowMeter span{display:block;height:100%;width:0;background:#8ffcff}
+.holdHint{position:absolute;left:0;right:0;bottom:62px;text-align:center;color:#fff;font-size:10px;font-weight:900;letter-spacing:.18em;opacity:.5;pointer-events:none}
+.hitPop,.revivePop,.starPop{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;text-align:center;text-shadow:0 3px 12px rgba(0,0,0,.9)}
+.hitPop{background:rgba(255,40,50,.14);color:#fff}.hitPop strong{display:block;font-size:52px}
+.revivePop{color:#8fffc4}.revivePop strong{display:block;font-size:36px}
+.starPop{color:#fff36b}.starPop strong{display:block;font-size:42px}
+.skins{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+.skin{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#fff;border-radius:12px;padding:10px;min-height:62px;font-weight:900}
+.skin.active{outline:2px solid #fff36b}
+.setting{margin-top:14px;text-align:left}
+.settingTop{display:flex;justify-content:space-between;gap:12px;align-items:center;font-size:13px;font-weight:800}
+.settingValue{font-size:11px;color:rgba(255,255,255,.65);font-weight:900}
+input[type=range]{width:100%;margin-top:8px;accent-color:white}
+.toggleRow{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:14px;text-align:left;font-size:13px}
+.toggle{min-width:68px;min-height:38px;border:0;border-radius:999px;background:#fff;color:#08090d;font-weight:950}
+.leaderRow{display:grid;grid-template-columns:36px 1fr auto;gap:8px;align-items:center;padding:9px 10px;margin-top:7px;border-radius:10px;background:rgba(255,255,255,.055);font-size:13px;text-align:left}
+.rank{font-weight:950;color:#fff36b}
+.small{font-size:11px;color:rgba(255,255,255,.6)}
+</style>
+</head>
+<body>
+<div class="phone">
+<div id="screen" class="screen" tabindex="0" aria-label="Astro Jump. Hold touch, mouse, or Space to thrust upward.">
+<canvas id="game" width="430" height="760"></canvas>
+
+<div class="hud">
+  <div>
+    <div id="score" style="font-size:30px;font-weight:950;line-height:1">0</div>
+    <div id="sector" style="margin-top:5px;font-size:10px;font-weight:900;letter-spacing:.23em;color:#ffffffb3">ORBIT</div>
+    <div id="speed" style="margin-top:4px;font-size:10px;font-weight:700;color:#ffffff8c">SPEED 112</div>
+    <div id="perfectHud" style="margin-top:4px;font-size:10px;font-weight:950;color:#fff36b">PERFECT 0/3</div>
+    <div id="starsHud" style="margin-top:4px;font-size:10px;font-weight:950;color:#fff36b">★ 0</div>
+  </div>
+  <div class="controls">
+    <button id="menuBtn" type="button" class="btn">☰</button>
+    <button id="pause" type="button" class="btn">⏸</button>
+    <button id="reviveBtn" type="button" class="btn">↻ TEST ON</button>
+  </div>
+</div>
+
+<div id="flowMeter" class="flowMeter hidden"><span id="flowBar"></span></div>
+<div id="choiceLabel" class="choiceLabel hidden">COMMIT HIGH OR LOW</div>
+<div id="movingLabel" class="movingLabel hidden">↕ MOVING GAP</div>
+<div id="speedPop" class="speedPop hidden"><strong id="speedTitle">SPEED UP</strong><span id="speedSub" class="small">LEVEL 10</span></div>
+<div id="perfectPop" class="perfectPop hidden"><strong>PERFECT!</strong><span id="perfectSub" class="small">1 / 3</span></div>
+<div id="flowPop" class="flowPop hidden"><div><strong>FLOW</strong><div class="small">LOCKED IN</div></div></div>
+<div id="hitPop" class="hitPop hidden"><div><strong>HIT!</strong><div class="small">REVIVING RUN</div></div></div>
+<div id="revivePop" class="revivePop hidden"><div><strong>REVIVED</strong><div class="small">3-SECOND SAFE CORRIDOR</div></div></div>
+<div id="starPop" class="starPop hidden"><div><strong>★ +1</strong><div class="small">RISK ROUTE</div></div></div>
+<div class="holdHint">HOLD = THRUST · RELEASE = FALL</div>
+
+<div class="skipbar">
+  <button type="button" data-skip="10">10</button>
+  <button type="button" data-skip="50">50</button>
+  <button type="button" data-skip="60">60</button>
+  <button type="button" data-skip="70">70</button>
+  <button type="button" data-skip="80">80</button>
+</div>
+
+<div id="mainMenu" class="overlay">
+  <div class="panel">
+    <div style="font-size:31px;font-weight:950">ASTRO JUMP</div>
+    <div style="margin-top:6px;font-size:13px;color:#ffffffb0">Safe Revive Build</div><div id="dailyLine" class="small" style="margin-top:8px;color:#fff36b">DAILY: Reach 50</div><div id="pbLine" class="small" style="margin-top:4px">BEST 0 · WALLET ★0</div>
+    <button id="play" type="button" class="primary">PLAY</button>
+    <button id="skinsBtn" type="button" class="secondary">SKINS</button>
+    <button id="shopBtn" type="button" class="secondary">SHOP</button>
+    <button id="leaderBtn" type="button" class="secondary">LEADERBOARD</button>
+    <button id="settingsBtn" type="button" class="secondary">SETTINGS</button>
+  </div>
+</div>
+
+<div id="skinsMenu" class="overlay hidden">
+  <div class="panel">
+    <div style="font-size:25px;font-weight:950">SKINS</div>
+    <div class="small" style="margin-top:4px">Dev mode: everything unlocked</div>
+    <div class="skins">
+      <button class="skin active" data-skin="classic" type="button">CLASSIC</button>
+      <button class="skin" data-skin="mars" type="button">MARS</button>
+      <button class="skin" data-skin="void" type="button">VOID</button>
+      <button class="skin" data-skin="solar" type="button">SOLAR</button>
+      <button class="skin" data-skin="alien" type="button">ALIEN</button>
+      <button class="skin" data-skin="fighter" type="button">FIGHTER</button>
+    </div>
+    <button id="skinsBack" type="button" class="secondary">BACK</button>
+  </div>
+</div>
+
+
+<div id="shopMenu" class="overlay hidden">
+  <div class="panel">
+    <div style="font-size:25px;font-weight:950">STAR SHOP</div>
+    <div id="wallet" style="margin-top:5px;color:#fff36b;font-weight:950">★ 0</div>
+    <div class="small" style="margin-top:4px">Cosmetics only — no gameplay advantages.</div>
+    <div id="shopItems" style="margin-top:10px"></div>
+    <button id="shopBack" type="button" class="secondary">BACK</button>
+  </div>
+</div>
+
+<div id="reviveMenu" class="overlay hidden">
+  <div class="panel">
+    <div style="font-size:29px;font-weight:950">MISSION FAILED</div>
+    <div id="deathRunScore" style="margin-top:7px;font-size:18px;font-weight:900">Score 0</div>
+    <div class="small" style="margin-top:7px">One revive per run.</div>
+    <button id="watchAd" type="button" class="primary">▶ WATCH AD · REVIVE</button>
+    <button id="endRun" type="button" class="secondary">END RUN</button>
+  </div>
+</div>
+<div id="leaderMenu" class="overlay hidden">
+  <div class="panel">
+    <div style="font-size:25px;font-weight:950">LEADERBOARD</div>
+    <div class="small" style="margin-top:4px">Prototype local scores</div>
+    <div id="leaderRows"></div>
+    <button id="leaderBack" type="button" class="secondary">BACK</button>
+  </div>
+</div>
+
+<div id="settingsMenu" class="overlay hidden">
+  <div class="panel">
+    <div style="font-size:25px;font-weight:950">SETTINGS</div>
+    <div class="setting">
+      <div class="settingTop"><span>Volume</span><span id="volumeValue" class="settingValue">80%</span></div>
+      <input id="volumeSlider" type="range" min="0" max="100" step="1" value="80">
+    </div>
+    <div class="setting">
+      <div class="settingTop"><span>Music</span><span id="musicValue" class="settingValue">60%</span></div>
+      <input id="musicSlider" type="range" min="0" max="100" step="1" value="60">
+    </div>
+    <div class="toggleRow"><span>Guidance lines</span><button id="guideToggle" type="button" class="toggle">ON</button></div>
+    <div class="toggleRow"><span>Flow effects</span><button id="flowToggle" type="button" class="toggle">ON</button></div>
+    <div class="toggleRow"><span>Hitbox Test Revive</span><button id="settingsRevive" type="button" class="toggle">ON</button></div>
+    <button id="settingsBack" type="button" class="secondary">BACK</button>
+  </div>
+</div>
+
+<div id="paused" class="overlay hidden">
+  <div class="panel">
+    <div style="font-size:25px;font-weight:950">PAUSED</div>
+    <button id="resume" type="button" class="primary">RESUME</button>
+    <button id="pauseMenu" type="button" class="secondary">MAIN MENU</button>
+  </div>
+</div>
+
+<div id="gameOver" class="overlay hidden">
+  <div class="panel">
+    <div style="font-size:31px;font-weight:950">RUN OVER</div>
+    <div id="newBest" class="hidden" style="margin-top:8px;color:#fff36b;font-size:22px;font-weight:950">NEW HIGH SCORE!</div><div id="finalScore" class="small" style="margin-top:8px">Score 0</div><div id="resultExtra" class="small" style="margin-top:6px"></div>
+    <button id="restart" type="button" class="primary">RESTART</button>
+    <button id="gameOverMenu" type="button" class="secondary">MAIN MENU</button>
+  </div>
+</div>
+</div>
+</div>
+
+<script>
+(() => {
+const q=s=>document.querySelector(s), qa=s=>Array.from(document.querySelectorAll(s));
+const canvas=q('#game'),ctx=canvas.getContext('2d'),screen=q('#screen');
+const scoreEl=q('#score'),sectorEl=q('#sector'),speedEl=q('#speed'),perfectHud=q('#perfectHud'),starsHud=q('#starsHud');
+const mainMenu=q('#mainMenu'),skinsMenu=q('#skinsMenu'),leaderMenu=q('#leaderMenu'),settingsMenu=q('#settingsMenu'),paused=q('#paused'),gameOver=q('#gameOver');
+const choiceLabel=q('#choiceLabel'),movingLabel=q('#movingLabel'),speedPop=q('#speedPop'),speedTitle=q('#speedTitle'),speedSub=q('#speedSub');
+const perfectPop=q('#perfectPop'),perfectSub=q('#perfectSub'),flowPop=q('#flowPop'),flowMeter=q('#flowMeter'),flowBar=q('#flowBar'),hitPop=q('#hitPop'),revivePop=q('#revivePop'),starPop=q('#starPop');
+const W=430,H=760;
+
+let state='menu',score=0,runStars=0,last=performance.now(),spawn=0,obstacles=[],particles=[],holding=false,testRevive=true,guides=true,flowFx=true;
+let choiceTimer=0,movingTimer=0,speedTimer=0,perfectTimer=0,lastBand=0,perfectStreak=0,flow=false,flowTimer=0,skin='classic';
+let recovering=0,collisionLock=0,spawnLock=0,volume=.8,music=.6,reviveUsed=false,runPerfects=0;
+
+const player={x:132,y:380,vy:0,boost:0,rot:0};
+const bgStars=Array.from({length:100},()=>({x:Math.random()*W,y:Math.random()*H,r:.4+Math.random()*1.4,s:5+Math.random()*13}));
+const GRAV=760,HOLD_ACCEL=-1020,MAX_UP=-335,MAX_DOWN=475,TAP_KICK=-220;
+const palettes=[
+['#586272','#8b96a8','#060914','#121d36'],['#1d5fae','#5ca9ff','#041328','#082c57'],['#6b3db5','#b18aff','#100521','#32115a'],
+['#a62f74','#ff78be','#210616','#57123d'],['#176f7c','#64e3f3','#031c22','#0c4b57'],['#a9571b','#ffc16d','#241006','#5b2607'],
+['#87323a','#ff7a86','#1a060a','#4b0d16'],['#612061','#ff66f2','#17031a','#410544'],['#17121d','#a56aff','#010104','#0c0212']];
+const speedSteps=[112,126,142,158,176,195,216,239,264];
+const skins={classic:['#d9e1ec','#8794a8','#4f87b7'],mars:['#dd7648','#8d3e27','#ffd08a'],void:['#24242d','#67677b','#b485ff'],solar:['#e8c45b','#9d7620','#fff1a6'],alien:['#8fdc9a','#3d7c51','#bfffd0'],fighter:['#d74c43','#7d2420','#f0d0a0']};
+
+const band=()=>Math.min(8,Math.floor(score/10));
+const pal=()=>palettes[band()];
+const speedNow=()=>speedSteps[band()];
+const sector=()=>score>=80?'VOID':score>=60?'DANGER ZONE':score>=40?'DEEP SPACE':score>=20?'OUTER ORBIT':'ORBIT';
+const cosmetics=[
+ {id:'mars',name:'Mars Suit',cost:8},{id:'void',name:'Void Suit',cost:18},{id:'solar',name:'Solar Suit',cost:35},
+ {id:'alien',name:'Alien Suit',cost:55},{id:'fighter',name:'Fighter Suit',cost:75}
+];
+function loadNum(k,d=0){const v=Number(localStorage.getItem(k));return Number.isFinite(v)?v:d}
+function loadArr(k,d=[]){try{return JSON.parse(localStorage.getItem(k)||JSON.stringify(d))}catch{return d}}
+function wallet(){return loadNum('astroWallet',0)}
+function addWallet(n){localStorage.setItem('astroWallet',String(wallet()+n));refreshMeta()}
+function owned(){return loadArr('astroOwned',['classic'])}
+function refreshMeta(){
+ const best=loadNum('astroBest',0);
+ const p=q('#pbLine');if(p)p.textContent='BEST '+best+' · WALLET ★'+wallet();
+ const w=q('#wallet');if(w)w.textContent='★ '+wallet();
+}
+function dailyChallenge(){
+ const day=Math.floor(Date.now()/86400000)%3;
+ return day===0?{text:'Reach score 50',ok:()=>score>=50}:day===1?{text:'Collect 3 risk stars',ok:()=>runStars>=3}:{text:'Get 5 PERFECTS',ok:()=>runPerfects>=5};
+}
+function refreshDaily(){q('#dailyLine').textContent='DAILY: '+dailyChallenge().text}
+function renderShop(){
+ refreshMeta();const have=owned();
+ q('#shopItems').innerHTML=cosmetics.map(it=>{
+  const isOwned=have.includes(it.id),can=wallet()>=it.cost;
+  return `<button type="button" class="secondary shopBuy" data-id="${it.id}" ${isOwned?'disabled':''}>${isOwned?'✓ OWNED':(can?'BUY':'LOCKED')} · ${it.name} · ★${it.cost}</button>`;
+ }).join('');
+ qa('.shopBuy').forEach(b=>b.addEventListener('click',()=>{
+  const it=cosmetics.find(x=>x.id===b.dataset.id);if(!it)return;let have=owned();
+  if(have.includes(it.id)||wallet()<it.cost)return;
+  localStorage.setItem('astroWallet',String(wallet()-it.cost));have.push(it.id);localStorage.setItem('astroOwned',JSON.stringify(have));renderShop();
+ }));
+}
+
+
+function hud(){
+ scoreEl.textContent=score;sectorEl.textContent=sector();speedEl.textContent='SPEED '+speedNow();
+ perfectHud.textContent='PERFECT '+perfectStreak+'/3';starsHud.textContent='★ '+runStars;
+}
+function reset(){
+ score=0;runStars=0;spawn=0;obstacles=[];particles=[];holding=false;lastBand=0;perfectStreak=0;flow=false;flowTimer=0;
+ recovering=0;collisionLock=0;spawnLock=0;reviveUsed=false;runPerfects=0;player.y=380;player.vy=0;player.boost=0;player.rot=0;state='playing';
+ qa('.overlay').forEach(x=>x.classList.add('hidden'));flowMeter.classList.add('hidden');hitPop.classList.add('hidden');revivePop.classList.add('hidden');
+ last=performance.now();hud();screen.focus();
+}
+function setHold(v){holding=v&&state==='playing'&&recovering<=0}
+function beginThrust(){if(state!=='playing'||recovering>0)return;player.vy=Math.min(player.vy,TAP_KICK);player.boost=1;setHold(true)}
+function choiceChance(){if(score<30)return 0;if(score<50)return .09;if(score<60)return .13;if(score<70)return .17;if(score<80)return .21;return .25}
+function movingChance(){if(score<60)return 0;if(score<70)return .125;if(score<80)return .25;return .34}
+
+function spawnObstacle(){
+ if(Math.random()<choiceChance()){
+   const baseOpening=158,topC=205+Math.random()*38,botC=520+Math.random()*35;
+   const hasStar=score>=40&&Math.random()<.34;
+   const starRoute=Math.random()<.5?'top':'bottom';
+   const topOpening=hasStar&&starRoute==='top'?138:baseOpening;
+   const bottomOpening=hasStar&&starRoute==='bottom'?138:baseOpening;
+   obstacles.push({type:'choice',x:W+40,w:50,topOpening,bottomOpening,topC,botC,passed:false,judged:false,hasStar,starRoute,starTaken:false});
+   choiceLabel.classList.remove('hidden');choiceTimer=.9;return;
+ }
+ const gap=Math.max(174,210-band()*5),margin=86,center=margin+gap/2+Math.random()*(H-margin*2-gap);
+ const moving=Math.random()<movingChance();let mode='none';
+ if(moving){
+   if(score<70)mode='sine';
+   else if(score<80)mode=Math.random()<.7?'sine':'shift';
+   else mode=Math.random()<.55?'sine':Math.random()<.75?'shift':'late';
+   movingLabel.classList.remove('hidden');movingTimer=.75;
+ }
+ obstacles.push({type:'normal',x:W+34,w:52,center,gap,base:center,top:center-gap/2,bottom:center+gap/2,passed:false,judged:false,moving,mode,phase:Math.random()*6.28,amp:score>=80?32:score>=70?27:21,moveSpeed:score>=80?1.65:score>=70?1.35:1,shifted:false,dir:Math.random()<.5?-1:1});
+}
+
+function astronautParts(){
+ return [
+  {x:player.x-10,y:player.y-30,w:21,h:20},{x:player.x-15,y:player.y-7,w:30,h:31},
+  {x:player.x-17,y:player.y+1,w:9,h:14},{x:player.x+9,y:player.y+1,w:9,h:14},
+  {x:player.x-10,y:player.y+23,w:8,h:13},{x:player.x+4,y:player.y+23,w:8,h:13}
+ ];
+}
+function overlap(a,b,c,d,e,f,g,h){return a<e+g&&a+c>e&&b<f+h&&b+d>f}
+function collides(o){
+ const parts=astronautParts();
+ if(o.type==='normal') return parts.some(r=>overlap(r.x,r.y,r.w,r.h,o.x,0,o.w,o.top)||overlap(r.x,r.y,r.w,r.h,o.x,o.bottom,o.w,H-o.bottom));
+ const a=o.topC-o.topOpening/2,b=o.topC+o.topOpening/2,c=o.botC-o.bottomOpening/2,d=o.botC+o.bottomOpening/2;
+ return parts.some(r=>overlap(r.x,r.y,r.w,r.h,o.x,0,o.w,a)||overlap(r.x,r.y,r.w,r.h,o.x,b,o.w,c-b)||overlap(r.x,r.y,r.w,r.h,o.x,d,o.w,H-d));
+}
+function puff(x,y,n,type='normal'){
+ for(let i=0;i<n;i++){const a=Math.random()*6.283,s=30+Math.random()*90;particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:.35+Math.random()*.25,r:1+Math.random()*2,type})}
+}
+function onBandChange(){
+ const b=band();if(b===lastBand)return;lastBand=b;
+ speedTitle.textContent=b===8?'VOID SPEED':'SPEED UP';speedSub.textContent='LEVEL '+b*10+' · '+speedNow();speedPop.classList.remove('hidden');speedTimer=.9;puff(W/2,120,18,'speed');hud();
+}
+function activateFlow(){
+ flow=true;flowTimer=5.5;perfectStreak=0;flowMeter.classList.remove('hidden');flowPop.classList.remove('hidden');
+ setTimeout(()=>flowPop.classList.add('hidden'),650);puff(player.x,player.y,24,'flow');hud();
+}
+function judgePerfect(center){
+ if(Math.abs(player.y-center)<=27){
+   perfectStreak++;runPerfects++;perfectSub.textContent=perfectStreak+' / 3';perfectPop.classList.remove('hidden');perfectTimer=.55;puff(player.x+20,player.y,12,'perfect');
+   if(perfectStreak>=3)activateFlow();
+ } else perfectStreak=0;
+ hud();
+}
+function collectRiskStar(o,route){
+ if(!o.hasStar||o.starTaken||route!==o.starRoute)return;
+ o.starTaken=true;runStars++;addWallet(1);starPop.classList.remove('hidden');setTimeout(()=>starPop.classList.add('hidden'),500);puff(player.x+22,player.y,16,'star');hud();
+}
+
+function saveLeaderboard(finalScore){
+ try{
+   let scores=JSON.parse(localStorage.getItem('astroJumpLB')||'[]');
+   scores.push({name:'YOU',score:finalScore,stars:runStars});
+   scores.sort((a,b)=>b.score-a.score||b.stars-a.stars);
+   localStorage.setItem('astroJumpLB',JSON.stringify(scores.slice(0,10)));
+ }catch(e){}
+}
+function renderLeaderboard(){
+ let scores=[];
+ try{scores=JSON.parse(localStorage.getItem('astroJumpLB')||'[]')}catch(e){}
+ if(!scores.length) scores=[{name:'ACE',score:180,stars:9},{name:'NOVA',score:142,stars:7},{name:'ORBIT',score:118,stars:5},{name:'VOID',score:96,stars:4}];
+ q('#leaderRows').innerHTML=scores.slice(0,8).map((r,i)=>`<div class="leaderRow"><div class="rank">#${i+1}</div><div>${r.name}</div><div><b>${r.score}</b> <span style="color:#fff36b">★${r.stars||0}</span></div></div>`).join('');
+}
+
+function finishRun(){
+ state='gameover';holding=false;
+ const oldBest=loadNum('astroBest',0),isBest=score>oldBest;
+ if(isBest)localStorage.setItem('astroBest',String(score));
+ const daily=dailyChallenge(),dailyKey='astroDaily-'+Math.floor(Date.now()/86400000);
+ let dailyReward='';
+ if(daily.ok()&&!localStorage.getItem(dailyKey)){addWallet(5);localStorage.setItem(dailyKey,'1');dailyReward=' · DAILY +★5'}
+ saveLeaderboard(score);
+ q('#newBest').classList.toggle('hidden',!isBest);
+ q('#finalScore').textContent='Score '+score+' · Risk stars '+runStars;
+ q('#resultExtra').textContent='Perfects '+runPerfects+' · Wallet ★'+wallet()+dailyReward;
+ q('#reviveMenu').classList.add('hidden');gameOver.classList.remove('hidden');refreshMeta();
+}
+function collisionDeath(){
+ if(collisionLock>0||recovering>0)return;
+ perfectStreak=0;holding=false;flow=false;flowTimer=0;flowMeter.classList.add('hidden');hud();puff(player.x,player.y,28,'hit');
+ hitPop.classList.remove('hidden');setTimeout(()=>hitPop.classList.add('hidden'),420);
+ if(testRevive){
+   recovering=.45;collisionLock=999;spawnLock=999;
+   setTimeout(()=>{
+     if(state!=='playing')return;
+     if(!reviveUsed){state='reviveChoice';q('#deathRunScore').textContent='Score '+score+' · ★ '+runStars;q('#reviveMenu').classList.remove('hidden')}
+     else finishRun();
+   },470);
+ } else finishRun();
+}
+
+/* IMPORTANT PATCH:
+   Revive always clears everything around Astro, centers him,
+   spaces remaining obstacles, blocks collisions, AND blocks spawning
+   for a true ~3 second recovery window. */
+function createSafeCorridor(){
+ player.y=H*.5;player.vy=0;player.boost=0;player.rot=0;
+ const clearLeft=player.x-140,clearRight=player.x+330;
+ obstacles=obstacles.filter(o=>o.x+o.w<clearLeft||o.x>clearRight);
+ obstacles.sort((a,b)=>a.x-b.x);
+ let nextX=player.x+350;
+ for(const o of obstacles){
+   if(o.x<nextX)o.x=nextX;
+   nextX=o.x+o.w+165;
+ }
+ spawn=0;spawnLock=3.0;collisionLock=3.0;
+ revivePop.classList.remove('hidden');setTimeout(()=>revivePop.classList.add('hidden'),700);
+}
+
+function updateMoving(o,dt){
+ if(!o.moving)return;
+ if(o.mode==='sine'){o.phase+=dt*o.moveSpeed;o.center=o.base+Math.sin(o.phase)*o.amp}
+ else if(o.mode==='shift'){
+   if(!o.shifted&&o.x<W*.72){o.shifted=true;o.base=Math.max(150,Math.min(H-150,o.base+o.dir*o.amp*1.8))}
+   o.center+=(o.base-o.center)*Math.min(1,dt*5);
+ } else if(o.mode==='late'){
+   if(!o.shifted&&o.x<W*.55){o.shifted=true;o.base=Math.max(150,Math.min(H-150,o.base+o.dir*o.amp*2.1))}
+   o.center+=(o.base-o.center)*Math.min(1,dt*7);
+ }
+ o.top=o.center-o.gap/2;o.bottom=o.center+o.gap/2;
+}
+
+function update(dt){
+ if(state!=='playing')return;
+ if(collisionLock>0)collisionLock-=dt;if(spawnLock>0)spawnLock-=dt;
+ if(recovering>0){recovering-=dt;if(recovering<=0)createSafeCorridor();return}
+ if(choiceTimer>0){choiceTimer-=dt;if(choiceTimer<=0)choiceLabel.classList.add('hidden')}
+ if(movingTimer>0){movingTimer-=dt;if(movingTimer<=0)movingLabel.classList.add('hidden')}
+ if(speedTimer>0){speedTimer-=dt;if(speedTimer<=0)speedPop.classList.add('hidden')}
+ if(perfectTimer>0){perfectTimer-=dt;if(perfectTimer<=0)perfectPop.classList.add('hidden')}
+ if(flow){flowTimer-=dt;flowBar.style.width=Math.max(0,flowTimer/5.5*100)+'%';if(flowTimer<=0){flow=false;flowMeter.classList.add('hidden')}}
+ player.boost=Math.max(0,player.boost-dt*6);
+ if(holding){player.vy+=HOLD_ACCEL*dt;if(player.vy<MAX_UP)player.vy=MAX_UP;player.boost=Math.max(player.boost,.8)}
+ else{player.vy+=GRAV*dt;if(player.vy>MAX_DOWN)player.vy=MAX_DOWN}
+ player.y+=player.vy*dt;
+ const thrustLean=holding?-0.28:Math.max(-.04,Math.min(.12,player.vy/3500));
+ player.rot+=(thrustLean-player.rot)*Math.min(1,dt*(holding?8:4));
+ if(collisionLock<=0&&(player.y<31||player.y>H-39)){collisionDeath();return}
+ if(spawnLock<=0){
+   spawn+=dt;const interval=Math.max(1.38,1.9-band()*.055);
+   if(spawn>=interval){spawn=0;spawnObstacle()}
+ }
+ const speed=speedNow()*(flow?.97:1);
+ bgStars.forEach(s=>{s.x-=s.s*dt*(1+band()*.05)*(flow?1.4:1);if(s.x<0){s.x=W;s.y=Math.random()*H}});
+ for(const o of obstacles){
+   updateMoving(o,dt);o.x-=speed*dt;
+   if(!o.judged&&o.x+o.w/2<player.x){
+     o.judged=true;
+     if(o.type==='choice'){
+       const td=Math.abs(player.y-o.topC),bd=Math.abs(player.y-o.botC),route=td<bd?'top':'bottom';
+       judgePerfect(route==='top'?o.topC:o.botC);collectRiskStar(o,route);
+     }else judgePerfect(o.center);
+   }
+   if(!o.passed&&o.x+o.w/2<player.x){o.passed=true;score++;onBandChange();hud()}
+   if(collisionLock<=0&&collides(o)){collisionDeath();break}
+ }
+ obstacles=obstacles.filter(o=>o.x+o.w>-12);
+ particles.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt});
+ particles=particles.filter(p=>p.life>0);
+}
+
+function background(){
+ const c=pal(),g=ctx.createLinearGradient(0,0,0,H);
+ if(flow&&flowFx){const h=(performance.now()/28)%360;g.addColorStop(0,`hsl(${h} 54% 12%)`);g.addColorStop(1,`hsl(${(h+120)%360} 58% 20%)`)}
+ else{g.addColorStop(0,c[2]);g.addColorStop(1,c[3])}
+ ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+ for(const s of bgStars){ctx.fillStyle=flow?'rgba(255,255,255,.88)':'rgba(255,255,255,.58)';ctx.beginPath();ctx.arc(s.x,s.y,s.r*(flow?1.3:1),0,6.283);ctx.fill()}
+ if(band()===8&&!flow){ctx.strokeStyle='rgba(169,106,255,.28)';ctx.lineWidth=18;ctx.beginPath();ctx.arc(350,130,55,0,6.283);ctx.stroke();ctx.fillStyle='#000';ctx.beginPath();ctx.arc(350,130,39,0,6.283);ctx.fill()}
+}
+function rr(x,y,w,h,moving=false){
+ if(h<=0)return;const c=pal();ctx.fillStyle=flow&&flowFx?'rgba(255,255,255,.22)':c[0];ctx.strokeStyle=moving?'#8ffcff':flow&&flowFx?'#ffffff':c[1];ctx.lineWidth=moving?3:2;
+ ctx.beginPath();ctx.roundRect(x,y,w,h,11);ctx.fill();ctx.stroke();
+}
+function drawGuide(o){
+ if(!guides||o.type!=='choice'||o.x<player.x-20||o.x>W+20)return;
+ const tx=o.x-6,commit=holding?(player.vy<0?'top':'bottom'):null;
+ ctx.save();ctx.setLineDash([7,7]);ctx.lineWidth=2;
+ ctx.strokeStyle=commit==='top'?'rgba(143,252,255,.98)':'rgba(143,252,255,.35)';ctx.beginPath();ctx.moveTo(player.x+20,player.y);ctx.lineTo(tx,o.topC);ctx.stroke();
+ ctx.strokeStyle=commit==='bottom'?'rgba(255,243,107,.98)':'rgba(255,243,107,.35)';ctx.beginPath();ctx.moveTo(player.x+20,player.y);ctx.lineTo(tx,o.botC);ctx.stroke();ctx.restore();
+}
+function drawMovingCue(o){
+ if(!o.moving||o.x<player.x-30)return;ctx.save();ctx.fillStyle='#8ffcff';ctx.font='900 15px system-ui';ctx.textAlign='center';ctx.fillText(o.mode==='sine'?'↕':o.dir<0?'↑':'↓',o.x+o.w/2,o.center+5);ctx.restore();
+}
+function drawStar(cx,cy){
+ ctx.save();ctx.translate(cx,cy);ctx.fillStyle='#fff36b';ctx.strokeStyle='#fff';ctx.lineWidth=1.3;ctx.beginPath();
+ for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,r=i%2?6:12;if(i===0)ctx.moveTo(Math.cos(a)*r,Math.sin(a)*r);else ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r)}
+ ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();
+}
+function drawObstacle(o){
+ if(o.type==='normal'){rr(o.x,0,o.w,o.top,o.moving);rr(o.x,o.bottom,o.w,H-o.bottom,o.moving);drawMovingCue(o)}
+ else{
+   const a=o.topC-o.topOpening/2,b=o.topC+o.topOpening/2,c=o.botC-o.bottomOpening/2,d=o.botC+o.bottomOpening/2;
+   rr(o.x,0,o.w,a);rr(o.x,b,o.w,c-b);rr(o.x,d,o.w,H-d);drawGuide(o);
+   if(o.hasStar&&!o.starTaken)drawStar(o.x+o.w/2,o.starRoute==='top'?o.topC:o.botC);
+ }
+}
+function astronaut(){
+ const b=player.boost,s=skins[skin];ctx.save();ctx.translate(player.x-b*4,player.y);ctx.rotate(player.rot);
+ ctx.fillStyle='#3d485c';ctx.beginPath();ctx.roundRect(-22,-4,10,28,4);ctx.fill();
+ if(b>.03){ctx.fillStyle=flow?'#8ffcff':'#ffd866';ctx.beginPath();ctx.moveTo(-23,1);ctx.lineTo(-43-b*14,6);ctx.lineTo(-23,10);ctx.closePath();ctx.fill();ctx.beginPath();ctx.moveTo(-23,13);ctx.lineTo(-42-b*14,17);ctx.lineTo(-23,21);ctx.closePath();ctx.fill()}
+ ctx.fillStyle=s[0];ctx.strokeStyle=s[1];ctx.lineWidth=2.3;ctx.beginPath();ctx.roundRect(-16,-7,33,35,9);ctx.fill();ctx.stroke();
+ ctx.beginPath();ctx.arc(2,-18,12.2,0,6.283);ctx.fill();ctx.stroke();ctx.fillStyle=s[2];ctx.beginPath();ctx.ellipse(5,-18,8.4,6.6,0,0,6.283);ctx.fill();
+ ctx.strokeStyle=s[0];ctx.lineWidth=5.5;ctx.lineCap='round';
+ ctx.beginPath();ctx.moveTo(-13,5);ctx.lineTo(-22+b*5,10);ctx.stroke();ctx.beginPath();ctx.moveTo(14,5);ctx.lineTo(23-b*5,8);ctx.stroke();
+ ctx.beginPath();ctx.moveTo(-8,25);ctx.lineTo(-10,36-b*4);ctx.stroke();ctx.beginPath();ctx.moveTo(8,25);ctx.lineTo(10,36-b*4);ctx.stroke();ctx.restore();
+}
+function draw(){
+ background();obstacles.forEach(drawObstacle);
+ for(const p of particles){ctx.globalAlpha=Math.max(0,p.life/.6);ctx.fillStyle=p.type==='perfect'?'#fff36b':p.type==='flow'?'#8ffcff':p.type==='hit'?'#ff5252':p.type==='star'?'#fff36b':'#ffffff';ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.283);ctx.fill()}
+ ctx.globalAlpha=1;astronaut();
+}
+function loop(now){const dt=Math.min((now-last)/1000,.032);last=now;update(dt);draw();requestAnimationFrame(loop)}
+
+function updateAudioLabels(){q('#volumeValue').textContent=volume===0?'OFF':Math.round(volume*100)+'%';q('#musicValue').textContent=music===0?'OFF':Math.round(music*100)+'%'}
+q('#volumeSlider').addEventListener('input',()=>{volume=Math.max(0,Math.min(1,Number(q('#volumeSlider').value)/100));updateAudioLabels()});
+q('#musicSlider').addEventListener('input',()=>{music=Math.max(0,Math.min(1,Number(q('#musicSlider').value)/100));updateAudioLabels()});
+
+q('#play').addEventListener('click',reset);q('#restart').addEventListener('click',reset);
+q('#pause').addEventListener('click',e=>{e.stopPropagation();if(state==='playing'){state='paused';holding=false;paused.classList.remove('hidden')}});
+q('#resume').addEventListener('click',()=>{paused.classList.add('hidden');state='playing';last=performance.now();screen.focus()});
+q('#pauseMenu').addEventListener('click',()=>{paused.classList.add('hidden');mainMenu.classList.remove('hidden');state='menu'});
+q('#gameOverMenu').addEventListener('click',()=>{gameOver.classList.add('hidden');mainMenu.classList.remove('hidden');state='menu'});
+q('#menuBtn').addEventListener('click',e=>{e.stopPropagation();holding=false;state='menu';mainMenu.classList.remove('hidden')});
+q('#skinsBtn').addEventListener('click',()=>{mainMenu.classList.add('hidden');skinsMenu.classList.remove('hidden')});
+q('#skinsBack').addEventListener('click',()=>{skinsMenu.classList.add('hidden');mainMenu.classList.remove('hidden')});
+q('#leaderBtn').addEventListener('click',()=>{renderLeaderboard();mainMenu.classList.add('hidden');leaderMenu.classList.remove('hidden')});
+q('#leaderBack').addEventListener('click',()=>{leaderMenu.classList.add('hidden');mainMenu.classList.remove('hidden')});
+
+q('#shopBtn').addEventListener('click',()=>{renderShop();mainMenu.classList.add('hidden');q('#shopMenu').classList.remove('hidden')});
+q('#shopBack').addEventListener('click',()=>{q('#shopMenu').classList.add('hidden');mainMenu.classList.remove('hidden')});
+q('#watchAd').addEventListener('click',()=>{
+ q('#reviveMenu').classList.add('hidden');reviveUsed=true;state='playing';recovering=0;createSafeCorridor();last=performance.now();screen.focus();
+});
+q('#endRun').addEventListener('click',finishRun);
+q('#settingsBtn').addEventListener('click',()=>{mainMenu.classList.add('hidden');settingsMenu.classList.remove('hidden')});
+q('#settingsBack').addEventListener('click',()=>{settingsMenu.classList.add('hidden');mainMenu.classList.remove('hidden')});
+
+function syncRevive(){q('#reviveBtn').textContent=testRevive?'↻ TEST ON':'↻ TEST OFF';q('#settingsRevive').textContent=testRevive?'ON':'OFF'}
+q('#reviveBtn').addEventListener('click',e=>{e.stopPropagation();testRevive=!testRevive;syncRevive()});
+q('#settingsRevive').addEventListener('click',()=>{testRevive=!testRevive;syncRevive()});
+q('#guideToggle').addEventListener('click',e=>{guides=!guides;e.currentTarget.textContent=guides?'ON':'OFF'});
+q('#flowToggle').addEventListener('click',e=>{flowFx=!flowFx;e.currentTarget.textContent=flowFx?'ON':'OFF'});
+qa('.skin').forEach(btn=>btn.addEventListener('click',()=>{const have=owned();if(btn.dataset.skin!=='classic'&&!have.includes(btn.dataset.skin))return;skin=btn.dataset.skin;qa('.skin').forEach(x=>x.classList.toggle('active',x===btn))}));
+qa('[data-skip]').forEach(btn=>btn.addEventListener('click',e=>{e.stopPropagation();score=Number(btn.dataset.skip)||0;lastBand=band();hud();obstacles=[];spawn=0}));
+
+screen.addEventListener('pointerdown',e=>{if(state!=='playing')return;e.preventDefault();beginThrust()});
+window.addEventListener('pointerup',()=>setHold(false));window.addEventListener('pointercancel',()=>setHold(false));
+screen.addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat){e.preventDefault();beginThrust()}else if((e.code==='KeyP'||e.code==='Escape')&&state==='playing'){e.preventDefault();state='paused';holding=false;paused.classList.remove('hidden')}});
+screen.addEventListener('keyup',e=>{if(e.code==='Space'){e.preventDefault();setHold(false)}});
+
+updateAudioLabels();refreshDaily();refreshMeta();hud();draw();requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
